@@ -21,7 +21,7 @@ def read_root():
         "description": "Empowering Meesho Sellers with AI-Driven Growth",
         "features": [
             "AI Content Generation",
-            "Smart Product Photography", 
+            "Smart Product Photography",
             "AI Try-On Technology",
             "Product Catalog Management"
         ],
