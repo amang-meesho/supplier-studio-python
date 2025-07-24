@@ -4,6 +4,7 @@ import os
 import requests
 from io import BytesIO
 from dotenv import load_dotenv
+from MongoRepo import MongoRepo
 from veo_video_generator import VeoVideoGenerator
 
 # Load environment variables from .env file
@@ -46,7 +47,7 @@ def count_words(text):
         return 0
     return len(text.split())
 
-def analyze_image(image, max_retries=5, min_words=50):
+def analyze_image(image, objectId=None, max_retries=5, min_words=50):
     
     if image is None:
         print("No image provided")
@@ -62,7 +63,6 @@ def analyze_image(image, max_retries=5, min_words=50):
             else:
                 print(f"Retry attempt {attempt + 1}/{max_retries} (previous response too short)...")
             
-            print(PROMPT_IMAGE_TO_TEXT)
             response = client.models.generate_content(
                 model = IMAGE_TO_TEXTMODEL,
                 contents=[image, PROMPT_IMAGE_TO_TEXT]
@@ -90,10 +90,23 @@ def analyze_image(image, max_retries=5, min_words=50):
             if attempt == max_retries - 1:
                 return None
             print("🔄 Retrying...")
-    
-    generate_video(result_text)
 
-    return result_text
+    operation_name = generate_video(result_text)
+
+    # Update MongoDB with operation_id if objectId is provided
+    if objectId and operation_name:
+        try:
+            mongo_repo = MongoRepo()
+            success = mongo_repo.update_gen_reel(objectId, operation_name)
+            if success:
+                print(f"✅ Successfully updated MongoDB document {objectId} with operation_name: {operation_name}")
+            else:
+                print(f"❌ Failed to update MongoDB document {objectId}")
+            mongo_repo.close_connection()
+        except Exception as e:
+            print(f"❌ Error updating MongoDB: {e}")
+
+    return result_text, operation_name
 
 def generate_video(prompt):
     if prompt:
@@ -117,32 +130,11 @@ def generate_video(prompt):
             print(f"   {prompt[:100]}{'...' if len(prompt) > 100 else ''}")
 
             # Call generate_video method
-            operation_id = generator.generate_video(prompt)
+            operation_name = generator.generate_video(prompt)
 
-            if operation_id:
-                print(f"✅ Video generation started successfully!")
-                print(f"🆔 Operation ID: {operation_id}")
-
-                with open("video_operation_id.txt", "w") as f:
-                    f.write(operation_id)
-                print(f"💾 Operation ID saved to: video_operation_id.txt")
-
-                # Optional: Wait for completion (uncomment if you want to wait)
-                """
-                print("\n⏰ Waiting for video generation to complete...")
-                result_data = generator.wait_for_completion(operation_id, max_wait_time=600)
-                
-                if result_data and result_data["status"] == "success":
-                    videos = result_data.get("videos", [])
-                    if videos:
-                        saved_files = generator.save_videos(videos, "fashion_video")
-                        print(f"🎥 Videos saved: {saved_files}")
-                    else:
-                        print("⚠️ No videos found in result")
-                else:
-                    print("❌ Video generation failed or timed out")
-                """
-
+            if operation_name:
+                print(f"🆔 Operation ID: {operation_name}")
+                return operation_name
             else:
                 print("❌ Failed to start video generation")
 
@@ -151,29 +143,3 @@ def generate_video(prompt):
 
     else:
         print("❌ No result available for video generation")
-
-
-def analyze_image_from_url(image_url, prompt="Tell me about this image", max_retries=5, min_words=50):
-    """
-    Analyze an image from URL using Gemini with fallback for short responses.
-    
-    Args:
-        image_url (str): The URL of the image
-        prompt (str): The prompt/question about the image
-        max_retries (int): Maximum number of retry attempts if response is too short
-        min_words (int): Minimum word count required for a valid response
-        
-    Returns:
-        str: The AI's response or None if failed
-    """
-    print(f"Fetching image from: {image_url}")
-    
-    image = fetch_image_from_url(image_url)
-    
-    if image is None:
-        print("Failed to fetch image from URL")
-        return None
-    
-    # Use the new analyze_image function
-    return analyze_image(image, max_retries, min_words)
-

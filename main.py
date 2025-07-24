@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Header
 from fastapi.responses import JSONResponse
 from PIL import Image
 import io
@@ -46,9 +46,10 @@ def read_root():
 
 
 @app.post("/upload-image")
-async def upload_image(file: UploadFile = File(...)):
+async def upload_image(file: UploadFile = File(...), objectId: str = Header(...)):
     """
     Upload an image and get confirmation with AI analysis.
+    ObjectId should be passed in the request header.
     """
     try:
         # Read the uploaded file
@@ -62,12 +63,13 @@ async def upload_image(file: UploadFile = File(...)):
             image = image.convert('RGB')
         
         # Analyze the image
-        analysis_result = analyze_image(image)
+        analysis_result = analyze_image(image, objectId)
         
         return JSONResponse(
             content={
                 "message": "image received", 
                 "filename": file.filename,
+                "objectId": objectId,
                 "analysis": analysis_result if analysis_result else "Analysis failed"
             },
             status_code=200
