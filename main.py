@@ -1,7 +1,16 @@
-from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import logging
+
+from fastapi import FastAPI, File, UploadFile, Header
+from fastapi.responses import JSONResponse
+from PIL import Image
+import io
+from ImageToText import analyze_image
+from routers import users, items, catalog, content_generation
+from reel_gen.controller.agent_controller import router as agent_router
+from test_agent.controller.agent_controller import router as test_agent_router
+
 
 # Import routers
 from routers import catalog, content_generation, main_controller, photography, try_on, catalog_optimizer
@@ -53,6 +62,7 @@ async def root():
         }
     }
 
+
 @app.get("/health")
 async def health_check():
     return {
@@ -60,6 +70,49 @@ async def health_check():
         "service": "Meesho Supplier AI Studio",
         "version": "1.0.0"
     }
+
+
+@app.post("/upload-image")
+async def upload_image(file: UploadFile = File(...), objectId: str = Header(...)):
+    """
+    Upload an image and get confirmation with AI analysis.
+    ObjectId should be passed in the request header.
+    """
+    try:
+        # Read the uploaded file
+        image_data = await file.read()
+        
+        # Convert to PIL Image
+        image = Image.open(io.BytesIO(image_data))
+        
+        # Convert to RGB if necessary
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        # Analyze the image
+        analysis_result = analyze_image(image, objectId)
+        
+        return JSONResponse(
+            content={
+                "message": "image received", 
+                "filename": file.filename,
+                "objectId": objectId,
+                "analysis": analysis_result if analysis_result else "Analysis failed"
+            },
+            status_code=200
+        )
+        
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "message": "image received", 
+                "filename": file.filename,
+                "error": f"Processing failed: {str(e)}"
+            },
+            status_code=200
+        )
+
+
 
 if __name__ == "__main__":
     uvicorn.run(
