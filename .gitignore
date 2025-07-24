@@ -1,2 +1,3 @@
-.pre-commit-config.yaml
-trufflehog/
+.pre-commit-config.yaml\
+.trufflehog/
+trufflehog
