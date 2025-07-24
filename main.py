@@ -1,10 +1,5 @@
 from fastapi import FastAPI
-from routers import users, items, catalog, content_generation, main_controller, placeholder_apis
-from dotenv import load_dotenv
-import os
-
-# Load environment variables from .env file
-load_dotenv()
+from routers import catalog, content_generation
 
 app = FastAPI(
     title="Meesho Supplier AI Studio",
@@ -14,15 +9,9 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Include all routers
-app.include_router(users.router)
-app.include_router(items.router)
+# Include functional routers only
 app.include_router(catalog.router)
 app.include_router(content_generation.router)
-app.include_router(main_controller.router)
-app.include_router(placeholder_apis.photo_router)
-app.include_router(placeholder_apis.tryon_router)
-app.include_router(placeholder_apis.seo_router)
 
 
 @app.get("/")
@@ -37,11 +26,8 @@ def read_root():
             "Product Catalog Management"
         ],
         "content_generation_endpoints": {
-            "generate_content": "/content/generate",
             "upload_and_generate": "/content/upload-and-generate",
-            "enhance_existing": "/content/enhance-existing",
-            "analytics": "/content/analytics/content-performance",
-            "test_agent": "/content/test-agent",
+            "get_content": "/content/{content_id}",
             "health_check": "/content/health"
         },
         "documentation": "/docs",
