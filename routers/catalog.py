@@ -3,13 +3,9 @@ from pydantic import BaseModel, HttpUrl
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-import os
 import logging
 from datetime import datetime
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
+from config import settings
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -17,13 +13,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/catalog-upload", tags=["catalog"])
 
-# MongoDB connection
-MONGODB_URL = os.getenv("MONGODB_URL")
-if not MONGODB_URL:
+# MongoDB connection using centralized config
+if not settings.MONGODB_URL:
     raise ValueError("MONGODB_URL environment variable is required")
 logger.info("Connecting to MongoDB Atlas")
-client = AsyncIOMotorClient(MONGODB_URL)
-db = client.supplier_studio
+client = AsyncIOMotorClient(settings.MONGODB_URL)
+db = client[settings.DATABASE_NAME]
 products_collection = db.products
 logger.info("MongoDB Atlas client initialized")
 

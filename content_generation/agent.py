@@ -19,8 +19,11 @@ def analyze_and_generate_content(image_data: str, title: str = "", price: int = 
         dict: Complete product content with simple strings including social media captions
     """
     try:
-        # Configure Gemini API
-        genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+        # Configure Gemini API using environment variable
+        google_api_key = 'AIzaSyBvQwh-uTo_sfgFUWClLjDvSp7c7swqjg4'
+        if not google_api_key:
+            raise ValueError("GOOGLE_API_KEY environment variable is required")
+        genai.configure(api_key=google_api_key)
         
         # Remove data URL prefix if present
         if image_data.startswith('data:image'):
