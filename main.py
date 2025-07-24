@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from PIL import Image
 import io
 from ImageToText import analyze_image
-from routers import users, items, catalog, content_generation
+from routers import users, items, catalog, content_generation, main_controller, photography, try_on, catalog_optimizer
 from reel_gen.controller.agent_controller import router as agent_router
 from test_agent.controller.agent_controller import router as test_agent_router
 
@@ -20,8 +20,13 @@ app.include_router(items.router)
 app.include_router(agent_router, prefix="/reel-gen")
 app.include_router(test_agent_router, prefix="/test-agent")
 # Include functional routers only
+# Include functional routers
+app.include_router(main_controller.router)  # Main orchestrator
 app.include_router(catalog.router)
 app.include_router(content_generation.router)
+app.include_router(photography.router)
+app.include_router(try_on.router)
+app.include_router(catalog_optimizer.router)
 
 
 @app.get("/")
