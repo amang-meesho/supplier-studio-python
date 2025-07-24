@@ -94,9 +94,6 @@ class VeoVideoGenerator:
             self.print_status("📡 Making API request...")
             response = requests.post(url, headers=headers, json=data)
             response.raise_for_status()
-            # print(url)
-            # print(headers)
-            print(data)
             result = response.json()
             
             # Extract operation ID
@@ -105,15 +102,10 @@ class VeoVideoGenerator:
                 self.print_status("❌ No operation name in response")
                 return None
             
-            # Extract the operation ID (last part after /operations/)
-            operation_id = operation_name.split('/operations/')[-1]
-            
             self.print_status(f"✅ Video generation started!")
-            self.print_status(f"🆔 Operation ID: {operation_id}")
             self.print_status(f"📋 Full operation name: {operation_name}")
-            
-            print(f"Operation ID: {operation_name}")
-            return operation_id
+
+            return operation_name
             
         except requests.exceptions.RequestException as e:
             self.print_status(f"❌ API request failed: {e}")
