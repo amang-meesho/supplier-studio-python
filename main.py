@@ -8,8 +8,7 @@ from PIL import Image
 import io
 from ImageToText import analyze_image
 from routers import users, items, catalog, content_generation
-from reel_gen.controller.agent_controller import router as agent_router
-from test_agent.controller.agent_controller import router as test_agent_router
+
 
 
 # Import routers

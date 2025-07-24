@@ -10,6 +10,9 @@ from bson import ObjectId
 import sys
 import os
 import aiohttp
+from ImageToText import analyze_image
+from PIL import Image
+import io
 
 # Add content_generation to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -45,7 +48,7 @@ class CompleteProductResponse(BaseModel):
     reels: Optional[str]  # Changed to Optional[str] to store video URL directly
     tryons: Dict[str, Any]
     photoshoot: Dict[str, Any]
-    operation_name: Dict[str, Any]
+    operation_name: Optional[str]  # Changed to Optional[str] for simple string storage
     status: str
 
 class FetchOperationResponse(BaseModel):
@@ -125,6 +128,9 @@ async def process_ai_services_background(product_id: str, image_content: bytes, 
         # Do image processing in background
         image_base64 = base64.b64encode(image_content).decode('utf-8')
         
+        # Convert bytes to PIL Image for analyze_image function
+        image_pil = Image.open(io.BytesIO(image_content))
+        
         # Update product with image data
         await products_collection.update_one(
             {"_id": ObjectId(product_id)},
@@ -136,14 +142,69 @@ async def process_ai_services_background(product_id: str, image_content: bytes, 
             }
         )
         
-        # Call content generation function directly
-        content_result = await process_content_generation(
+        # Create async wrapper for analyze_image (since it's synchronous)
+        async def run_analyze_image():
+            try:
+                # Call analyze_image function in a thread pool since it's synchronous
+                import concurrent.futures
+                loop = asyncio.get_event_loop()
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    result = await loop.run_in_executor(
+                        executor, 
+                        analyze_image, 
+                        image_pil, 
+                        product_id
+                    )
+                return result
+            except Exception as e:
+                logger.error(f"Image analysis failed for product {product_id}: {str(e)}")
+                return None
+        
+        # Run both content generation and image analysis in parallel
+        content_task = process_content_generation(
             image_base64, product_id, title, price, description
         )
+        image_analysis_task = run_analyze_image()
+        
+        # Wait for both tasks to complete
+        content_result, image_analysis_result = await asyncio.gather(
+            content_task, 
+            image_analysis_task,
+            return_exceptions=True
+        )
+        
+        # Handle content generation result
+        if isinstance(content_result, Exception):
+            logger.error(f"Content generation failed: {content_result}")
+            content_success = False
+        else:
+            content_success = content_result.success
+        
+        # Handle image analysis result
+        if image_analysis_result and not isinstance(image_analysis_result, Exception):
+            result_text, operation_name = image_analysis_result
+            logger.info(f"Image analysis completed for product {product_id}")
+            logger.info(f"Operation name: {operation_name}")
+            
+            # Update product with operation_name
+            if operation_name:
+                await products_collection.update_one(
+                    {"_id": ObjectId(product_id)},
+                    {
+                        "$set": {
+                            "operation_name": operation_name,  # Store as simple string
+                            "image_analysis_text": result_text,
+                            "updated_at": datetime.utcnow()
+                        }
+                    }
+                )
+        else:
+            logger.error(f"Image analysis failed for product {product_id}")
         
         # Update processing status
         processing_status = {
-            content_result.api_name: "completed" if content_result.success else "failed"
+            "content_generation": "completed" if content_success else "failed",
+            "image_analysis": "completed" if image_analysis_result and not isinstance(image_analysis_result, Exception) else "failed"
         }
         
         # TODO: Add other services here when implemented
@@ -278,7 +339,7 @@ async def process_product_with_ai(
             "reels": {},
             "tryons": {},
             "photoshoot": {},
-            "operation_name": {},
+            "operation_name": None,  # Initialize as None instead of empty dict
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
@@ -292,6 +353,7 @@ async def process_product_with_ai(
         # Add background task to process image and AI services
         background_tasks.add_task(
             process_ai_services_background,
+
             product_id, image_content, title, price, description
         )
         
@@ -422,13 +484,9 @@ async def get_complete_product(object_id: str, background_tasks: BackgroundTasks
             photoshoot = {}
             
         # Check multiple possible ways operation_name might be stored
-        operation_name = product.get("operation_name", {})
-        if not isinstance(operation_name, dict):
-            # If it's stored as a string, convert to dict format
-            if isinstance(operation_name, str):
-                operation_name = {"operation_name": operation_name}
-            else:
-                operation_name = {}
+        operation_name = product.get("operation_name", None)  # Default to None instead of empty dict
+        if not isinstance(operation_name, (str, dict, type(None))):
+            operation_name = None  # Reset to None if invalid type
         
         # Also check other possible field names
         if not operation_name:
@@ -447,12 +505,16 @@ async def get_complete_product(object_id: str, background_tasks: BackgroundTasks
         # Fix the operation_name_exists check
         operation_name_value = None
         if operation_name:
-            operation_name_value = (
-                operation_name.get("operation_name") or 
-                operation_name.get("operationName") or
-                operation_name.get("operation")
-            )
-        
+            if isinstance(operation_name, str):
+                # New format - simple string
+                operation_name_value = operation_name
+            elif isinstance(operation_name, dict):
+                # Old format - nested dict (for backward compatibility)
+                operation_name_value = (
+                    operation_name.get("operation_name") or
+                    operation_name.get("operationName") or
+                    operation_name.get("operation")
+                )
         operation_name_exists = bool(operation_name_value)
         
         logger.info(f"Debug - reels_is_empty: {reels_is_empty}")
@@ -476,7 +538,7 @@ async def get_complete_product(object_id: str, background_tasks: BackgroundTasks
             reels=reels_response,  # Use converted value
             tryons=tryons,
             photoshoot=photoshoot,
-            operation_name=operation_name,
+            operation_name=operation_name_value,
             status=status
         )
         
