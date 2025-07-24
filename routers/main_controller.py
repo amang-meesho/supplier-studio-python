@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, File, UploadFile, Form, BackgroundTasks
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 import motor.motor_asyncio
 import asyncio
 from datetime import datetime
@@ -9,6 +9,7 @@ import logging
 from bson import ObjectId
 import sys
 import os
+import aiohttp
 
 # Add content_generation to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -41,10 +42,16 @@ class ProductProcessingResponse(BaseModel):
 
 class CompleteProductResponse(BaseModel):
     content_generation: Dict[str, Any]
-    reels: Dict[str, Any]
+    reels: Optional[str]  # Changed to Optional[str] to store video URL directly
     tryons: Dict[str, Any]
     photoshoot: Dict[str, Any]
+    operation_name: Dict[str, Any]
     status: str
+
+class FetchOperationResponse(BaseModel):
+    status: str
+    response: Dict[str, Any]
+    formatted_video_url: Optional[str] = None
 
 class APICallResult(BaseModel):
     api_name: str
@@ -173,6 +180,57 @@ async def process_ai_services_background(product_id: str, image_content: bytes, 
             }
         )
 
+async def fetch_and_populate_reels_background(object_id: str, operation_name_string: str):
+    """
+    Background task to fetch video operation and populate reels field
+    """
+    try:
+        logger.info(f"Debug - operation_name_string received: {operation_name_string}")
+        
+        if not operation_name_string:
+            logger.warning(f"No operation name found for object_id {object_id}")
+            return
+            
+        logger.info(f"Starting background fetch operation for object_id {object_id} with operation_name {operation_name_string}")
+        
+        # Call the fetch operation function
+        fetch_result = await fetch_operation(operation_name_string)
+        
+        logger.info(f"Fetch result for {object_id}: {fetch_result.status}")
+        
+        # Store only the video URL directly in reels field
+        if fetch_result.status == "success" and fetch_result.formatted_video_url:
+            reels_value = fetch_result.formatted_video_url
+        else:
+            reels_value = None  # or empty string if you prefer
+        
+        # Update the product document with just the video URL
+        await products_collection.update_one(
+            {"_id": ObjectId(object_id)},
+            {
+                "$set": {
+                    "reels": reels_value,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        logger.info(f"Successfully populated reels field for object_id {object_id} with video URL: {reels_value}")
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch and populate reels for object_id {object_id}: {str(e)}")
+        
+        # Update with null value on error
+        await products_collection.update_one(
+            {"_id": ObjectId(object_id)},
+            {
+                "$set": {
+                    "reels": None,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+
 @router.post("/process-product", response_model=ProductProcessingResponse)
 async def process_product_with_ai(
     background_tasks: BackgroundTasks,
@@ -220,6 +278,7 @@ async def process_product_with_ai(
             "reels": {},
             "tryons": {},
             "photoshoot": {},
+            "operation_name": {},
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
@@ -248,11 +307,77 @@ async def process_product_with_ai(
         logger.error(f"Error in process_product_with_ai: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to process product: {str(e)}")
 
+
+
+
+async def fetch_operation(operationName):
+    """
+    Fetch the result of a video generation operation using operation name
+    Takes only operationName and returns the operation result with formatted video URL
+    """
+    
+    fetch_url = "https://us-central1-aiplatform.googleapis.com/v1/projects/meesho-hackmee-3-proj-49/locations/us-central1/publishers/google/models/veo-2.0-generate-001:fetchPredictOperation"
+    
+    headers = {
+        "Authorization": "Bearer ya29.A0AS3H6NzlIcRpREcGxf6J4u-2Fe__X9LPN_dsXq_50QWkFLN4Yml8ywimAYoCx9pZPjzV6v8QVYjW3yAdoDu3h8sgzyJ7SQUsIZRwf3U3EdhZSQ_Enk6mHjlZcfXG2WhIVNrcjhklKSyWk2rt_pSshMryQv2nL0ASKv7VFPC2r4gymZ2JrMs_3vCOYoFSdsGvA2IA6YJqw0aPH2Ec-tVK3leW6LHYK5_MJp808Y9ZjXA8nDRhxpm3vLKfGtAjC6xnFFYXxBJ1ivuESvhOXG36yjvBAXO-vekq_G2aRIEBXFdP_BOKVekbS-6tiEnC2pWW45_3NEjkmTyhzixv9QZSOQCyohRuZhKtrBE1aCgYKAYkSARESFQHGX2MiNT8UJSJQVl4icWvXwwuLgg0363",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "operationName": operationName
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(fetch_url, headers=headers, json=payload) as response:
+                if response.status == 200:
+                    response_data = await response.json()
+                    
+                    # Extract and format the video URL if available
+                    formatted_video_url = None
+                    try:
+                        # Navigate to the gcsUri in the response structure
+                        if ("response" in response_data and 
+                            "videos" in response_data["response"] and 
+                            len(response_data["response"]["videos"]) > 0 and
+                            "gcsUri" in response_data["response"]["videos"][0]):
+                            
+                            gcs_uri = response_data["response"]["videos"][0]["gcsUri"]
+                            # Convert gs:// to https://storage.cloud.google.com/
+                            formatted_video_url = gcs_uri.replace("gs://", "https://storage.cloud.google.com/")
+                    except (KeyError, IndexError, TypeError):
+                        # If URL extraction fails, continue without it
+                        pass
+                    
+                    return FetchOperationResponse(
+                        status="success",
+                        response=response_data,
+                        formatted_video_url=formatted_video_url
+                    )
+                else:
+                    error_text = await response.text()
+                    raise HTTPException(
+                        status_code=response.status,
+                        detail=f"Fetch operation API call failed: {error_text}"
+                    )
+                    
+    except aiohttp.ClientError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Network error: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}"
+        )
+
 @router.get("/product/{object_id}", response_model=CompleteProductResponse)
-async def get_complete_product(object_id: str):
+async def get_complete_product(object_id: str, background_tasks: BackgroundTasks):
     """
     Get product processing status and AI service results by object_id.
-    Returns only: content_generation, reels, tryons, photoshoot, and status.
+    Returns only: content_generation, reels, tryons, photoshoot, operation_name, and status.
+    If reels is empty and operation_name exists, triggers background fetch to populate reels.
     """
     try:
         # Validate ObjectId format
@@ -267,20 +392,91 @@ async def get_complete_product(object_id: str):
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
         
-        # Extract only the required fields
+        # Debug: Print the entire document structure (excluding large image_data)
+        debug_product = {k: v for k, v in product.items() if k != "image_data"}
+        logger.info(f"Debug - Full document structure: {debug_product}")
+        
+        # Extract only the required fields and ensure they are dictionaries
         content_generation = product.get("content_generation", {})
+        if not isinstance(content_generation, dict):
+            content_generation = {}
+            
         reels = product.get("reels", {})
+        # Handle both old dict format and new string format
+        if isinstance(reels, dict):
+            # Old format - check if it has success field
+            reels_is_empty = not reels or not reels.get("success")
+            # Extract video URL from old format for response
+            reels_response = reels.get("video_url") if reels and reels.get("success") else None
+        else:
+            # New format - check if it's a non-empty string
+            reels_is_empty = not reels or reels == ""
+            reels_response = reels
+            
         tryons = product.get("tryons", {})
+        if not isinstance(tryons, dict):
+            tryons = {}
+            
         photoshoot = product.get("photoshoot", {})
+        if not isinstance(photoshoot, dict):
+            photoshoot = {}
+            
+        # Check multiple possible ways operation_name might be stored
+        operation_name = product.get("operation_name", {})
+        if not isinstance(operation_name, dict):
+            # If it's stored as a string, convert to dict format
+            if isinstance(operation_name, str):
+                operation_name = {"operation_name": operation_name}
+            else:
+                operation_name = {}
+        
+        # Also check other possible field names
+        if not operation_name:
+            for field_name in ["operationName", "operation", "operation_id"]:
+                if field_name in product:
+                    operation_name = {"operation_name": product[field_name]}
+                    break
+            
         status = product.get("processing_status", "unknown")
+        
+        # Debug logging
+        logger.info(f"Debug - object_id: {object_id}")
+        logger.info(f"Debug - reels: {reels}")
+        logger.info(f"Debug - operation_name: {operation_name}")
+        
+        # Fix the operation_name_exists check
+        operation_name_value = None
+        if operation_name:
+            operation_name_value = (
+                operation_name.get("operation_name") or 
+                operation_name.get("operationName") or
+                operation_name.get("operation")
+            )
+        
+        operation_name_exists = bool(operation_name_value)
+        
+        logger.info(f"Debug - reels_is_empty: {reels_is_empty}")
+        logger.info(f"Debug - operation_name_value: {operation_name_value}")
+        logger.info(f"Debug - operation_name_exists: {operation_name_exists}")
+        
+        if reels_is_empty and operation_name_exists:
+            logger.info(f"Reels is empty and operation_name exists. Triggering background fetch for {object_id}")
+            # Add background task to fetch operation and populate reels
+            background_tasks.add_task(
+                fetch_and_populate_reels_background,
+                object_id, operation_name_value  # Pass the actual operation name string
+            )
+        else:
+            logger.info(f"Skipping background fetch - reels_is_empty: {reels_is_empty}, operation_name_exists: {operation_name_exists}")
         
         logger.info(f"Successfully retrieved product {object_id} with status: {status}")
         
         return CompleteProductResponse(
             content_generation=content_generation,
-            reels=reels,
+            reels=reels_response,  # Use converted value
             tryons=tryons,
             photoshoot=photoshoot,
+            operation_name=operation_name,
             status=status
         )
         
@@ -289,6 +485,50 @@ async def get_complete_product(object_id: str):
     except Exception as e:
         logger.error(f"Error fetching product {object_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve product: {str(e)}")
+
+@router.post("/product/{object_id}/set-operation-name")
+async def set_operation_name(object_id: str, operation_name: str = Form(...)):
+    """
+    Manually set operation_name for testing purposes
+    """
+    try:
+        # Validate ObjectId format
+        if not ObjectId.is_valid(object_id):
+            raise HTTPException(status_code=400, detail="Invalid object_id format")
+        
+        logger.info(f"Setting operation_name for object_id: {object_id}")
+        
+        # Update the product document with operation_name
+        result = await products_collection.update_one(
+            {"_id": ObjectId(object_id)},
+            {
+                "$set": {
+                    "operation_name": {
+                        "operation_name": operation_name,
+                        "set_manually": True,
+                        "set_at": datetime.utcnow()
+                    },
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Product not found")
+        
+        logger.info(f"Successfully set operation_name for object_id: {object_id}")
+        
+        return {
+            "success": True,
+            "message": f"Operation name set successfully for {object_id}",
+            "operation_name": operation_name
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting operation_name for {object_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to set operation_name: {str(e)}")
 
 @router.get("/product-results/{product_id}")
 async def get_product_results(product_id: str):
@@ -354,7 +594,7 @@ async def health_check():
             "status": "healthy",
             "service": "Main AI Controller",
             "database": "connected",
-            "configured_services": ["content_generation", "reels", "tryons", "photoshoot"],
+            "configured_services": ["content_generation", "reels", "tryons", "photoshoot", "operation_name"],
             "timestamp": datetime.utcnow().isoformat()
         }
         

@@ -1,94 +1,71 @@
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import JSONResponse
-from PIL import Image
-import io
-from ImageToText import analyze_image
-from routers import users, items, catalog, content_generation, main_controller, photography, try_on, catalog_optimizer
-from reel_gen.controller.agent_controller import router as agent_router
-from test_agent.controller.agent_controller import router as test_agent_router
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+import logging
 
-app = FastAPI(
-    title="Meesho Supplier AI Studio",
-    description="AI-powered content generation and tools for Meesho sellers",
-    version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
+# Import routers
+from routers import catalog, content_generation, main_controller, photography, try_on, catalog_optimizer
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-app.include_router(users.router)
-app.include_router(items.router)
-app.include_router(agent_router, prefix="/reel-gen")
-app.include_router(test_agent_router, prefix="/test-agent")
-# Include functional routers only
-# Include functional routers
-app.include_router(main_controller.router)  # Main orchestrator
+# Create FastAPI app
+app = FastAPI(
+    title="Meesho Supplier AI Studio",
+    version="1.0.0",
+    description="AI-powered content generation and tools for Meesho sellers"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+# Include routers
 app.include_router(catalog.router)
 app.include_router(content_generation.router)
+app.include_router(main_controller.router)
 app.include_router(photography.router)
 app.include_router(try_on.router)
 app.include_router(catalog_optimizer.router)
 
-
 @app.get("/")
-def read_root():
+async def root():
     return {
-        "message": "🚀 Meesho Supplier AI Studio",
-        "description": "Empowering Meesho Sellers with AI-Driven Growth",
-        "features": [
-            "AI Content Generation",
-            "Smart Product Photography",
-            "AI Try-On Technology",
-            "Product Catalog Management"
-        ],
-        "content_generation_endpoints": {
-            "upload_and_generate": "/content/upload-and-generate",
-            "get_content": "/content/{content_id}",
-            "health_check": "/content/health"
-        },
-        "documentation": "/docs",
-        "status": "ready_for_hackathon"
+        "message": "Welcome to Meesho Supplier AI Studio",
+        "version": "1.0.0",
+        "description": "AI-powered content generation and tools for Meesho sellers",
+        "endpoints": {
+            "health": "/api/v1/health",
+            "process_product": "/api/v1/process-product",
+            "get_product": "/api/v1/product/{object_id}",
+            "content_generation": "/content/upload-and-generate",
+            "photography": "/photography/enhance",
+            "try_on": "/try-on/process",
+            "catalog": "/catalog/optimize"
+        }
     }
 
-
-@app.post("/upload-image")
-async def upload_image(file: UploadFile = File(...)):
-    """
-    Upload an image and get confirmation with AI analysis.
-    """
-    try:
-        # Read the uploaded file
-        image_data = await file.read()
-        
-        # Convert to PIL Image
-        image = Image.open(io.BytesIO(image_data))
-        
-        # Convert to RGB if necessary
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-        
-        # Analyze the image
-        analysis_result = analyze_image(image)
-        
-        return JSONResponse(
-            content={
-                "message": "image received", 
-                "filename": file.filename,
-                "analysis": analysis_result if analysis_result else "Analysis failed"
-            },
-            status_code=200
-        )
-        
-    except Exception as e:
-        return JSONResponse(
-            content={
-                "message": "image received", 
-                "filename": file.filename,
-                "error": f"Processing failed: {str(e)}"
-            },
-            status_code=200
-        )
-
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "Meesho Supplier AI Studio",
+        "version": "1.0.0"
+    }
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info"
+    ) 
