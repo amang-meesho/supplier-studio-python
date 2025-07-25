@@ -20,7 +20,7 @@ def analyze_and_generate_content(image_data: str, title: str = "", price: int = 
     """
     try:
         # Configure Gemini API using environment variable
-        google_api_key = 'AIzaSyBvQwh-uTo_sfgFUWClLjDvSp7c7swqjg4'
+        google_api_key = 'AIzaSyCk0ngkeNCGE_WUwmAYDkrieMBJkC2xKFs'
         if not google_api_key:
             raise ValueError("GOOGLE_API_KEY environment variable is required")
         genai.configure(api_key=google_api_key)

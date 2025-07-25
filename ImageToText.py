@@ -11,7 +11,8 @@ from veo_video_generator import VeoVideoGenerator
 load_dotenv()
 
 # Set the environment variable that Google AI SDK expects
-os.environ['GOOGLE_API_KEY'] = os.getenv('GOOGLE_API_KEY')
+google_api_key = 'AIzaSyBvQwh-uTo_sfgFUWClLjDvSp7c7swqjg4'  # Hardcode the API key
+os.environ['GOOGLE_API_KEY'] = google_api_key
 
 IMAGE_TO_TEXTMODEL = "gemini-2.5-pro"
 
@@ -115,8 +116,8 @@ def generate_video(prompt):
         print("="*60)
 
         # Configuration for video generation
-        ACCESS_TOKEN = os.getenv('GOOGLE_ACCESS_TOKEN')
-
+        ACCESS_TOKEN = 'ya29.A0AS3H6Nz_P1HAXQUmkK37vokZa2HnJtUr0H5VQh9k_DyMslo2jCep4A33-6YvmTChBeuHm-9DdMw7LQC2iDmUFO7R4870wbTP-BbPYjMIbJSrRnlgmNMT7GvwefV_o3eQ1XcJnUkL_Qfm2ODKpMhK97L9-ce0C1slkIvDbjk0Oku0Q-NivaGKH-s71Mq1oht-wFEmDGt-9c6p2xwpkkKSVscML9_Ri-Z4QM2dYKZiEweNxThIo5aRwW1YC40uVXxt6bqYD0TfgDUFsua74fyhzxqJhQlRRn5rJlcrfvePpMaOHHVPEG0SrCX-31Ww6OYvJhXbftLvNc6lFh4fvzagdGF9KgLjKHvOU7GYaCgYKAZkSARESFQHGX2MiuwvuZ8Tb_waj7zc4FxtMLQ0363'
+        print(f"ACCESS_TOKEN: {ACCESS_TOKEN}")
         if not ACCESS_TOKEN:
             print("❌ Error: GOOGLE_ACCESS_TOKEN not found in environment variables")
             print("Please add GOOGLE_ACCESS_TOKEN to your .env file")

@@ -377,11 +377,11 @@ async def fetch_operation(operationName):
     Fetch the result of a video generation operation using operation name
     Takes only operationName and returns the operation result with formatted video URL
     """
-    
+    google_access_token = "ya29.A0AS3H6Nz_P1HAXQUmkK37vokZa2HnJtUr0H5VQh9k_DyMslo2jCep4A33-6YvmTChBeuHm-9DdMw7LQC2iDmUFO7R4870wbTP-BbPYjMIbJSrRnlgmNMT7GvwefV_o3eQ1XcJnUkL_Qfm2ODKpMhK97L9-ce0C1slkIvDbjk0Oku0Q-NivaGKH-s71Mq1oht-wFEmDGt-9c6p2xwpkkKSVscML9_Ri-Z4QM2dYKZiEweNxThIo5aRwW1YC40uVXxt6bqYD0TfgDUFsua74fyhzxqJhQlRRn5rJlcrfvePpMaOHHVPEG0SrCX-31Ww6OYvJhXbftLvNc6lFh4fvzagdGF9KgLjKHvOU7GYaCgYKAZkSARESFQHGX2MiuwvuZ8Tb_waj7zc4FxtMLQ0363"
     fetch_url = "https://us-central1-aiplatform.googleapis.com/v1/projects/meesho-hackmee-3-proj-49/locations/us-central1/publishers/google/models/veo-2.0-generate-001:fetchPredictOperation"
     
     headers = {
-        "Authorization": "Bearer ya29.A0AS3H6NzlIcRpREcGxf6J4u-2Fe__X9LPN_dsXq_50QWkFLN4Yml8ywimAYoCx9pZPjzV6v8QVYjW3yAdoDu3h8sgzyJ7SQUsIZRwf3U3EdhZSQ_Enk6mHjlZcfXG2WhIVNrcjhklKSyWk2rt_pSshMryQv2nL0ASKv7VFPC2r4gymZ2JrMs_3vCOYoFSdsGvA2IA6YJqw0aPH2Ec-tVK3leW6LHYK5_MJp808Y9ZjXA8nDRhxpm3vLKfGtAjC6xnFFYXxBJ1ivuESvhOXG36yjvBAXO-vekq_G2aRIEBXFdP_BOKVekbS-6tiEnC2pWW45_3NEjkmTyhzixv9QZSOQCyohRuZhKtrBE1aCgYKAYkSARESFQHGX2MiNT8UJSJQVl4icWvXwwuLgg0363",
+        "Authorization": f"Bearer {google_access_token}",
         "Content-Type": "application/json"
     }
     
@@ -456,7 +456,7 @@ async def get_complete_product(object_id: str, background_tasks: BackgroundTasks
         
         # Debug: Print the entire document structure (excluding large image_data)
         debug_product = {k: v for k, v in product.items() if k != "image_data"}
-        logger.info(f"Debug - Full document structure: {debug_product}")
+        # logger.info(f"Debug - Full document structure: {debug_product}")  # Commented out to reduce log noise
         
         # Extract only the required fields and ensure they are dictionaries
         content_generation = product.get("content_generation", {})
